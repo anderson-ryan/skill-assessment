@@ -1,11 +1,12 @@
 import json
-import os
 import requests
 from dotenv import load_dotenv
+from os import getenv
+from sys import exit
 
 def get_token():
     load_dotenv()
-    return os.getenv('ACCESS_TOKEN')
+    return getenv('ACCESS_TOKEN')
 
 
 def get_nested_key(doc, names):
@@ -102,6 +103,10 @@ def parse_song_response(response, id):
 
 if __name__ == "__main__":
     try:
+        if not get_token():
+            print("Genius API token not found. Get one from https://genius.com/api-clients and save it in .env")
+            exit()
+
         artist = input("Enter artist's name: ")
         response = search(artist)
         artist_id = parse_artist_id(response, artist)
