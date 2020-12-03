@@ -1,7 +1,6 @@
 import json
 import os
 import requests
-import sys
 from dotenv import load_dotenv
 
 def get_token():
@@ -9,29 +8,40 @@ def get_token():
     return os.getenv('ACCESS_TOKEN')
 
 
+def get_nested_key(doc, names):
+    for name in names:
+        if doc.get(name):
+            doc = doc[name]
+        else:
+            return None
+    return doc
+
+
 # Raises: requests.exceptions.ConnectionError, requests.exceptions.HTTPError, requests.exceptions.Timeout
-def search(artist):
+def search(artist, timeout=5):
     with requests.Session() as s:
         s.headers.update({'Authorization': "Bearer %s" % get_token()})
-        response = s.get('https://api.genius.com/search', params={'q': artist}, timeout=2)
+        response = s.get('https://api.genius.com/search', params={'q': artist}, timeout=timeout)
         response.raise_for_status()
         return response.text
 
 
-# Raises: json.JSONDecodeError
-def parse_artist_id(artist, response):
+# Raises: json.decoder.JSONDecodeError
+def parse_artist_id(response, artist):
     response = json.loads(response)
-    if response.get('response').get('hits'):
-        for hit in response['response']['hits']:
-            if hit.get('result').get('primary_artist'):
-                primary_artist = hit['result']['primary_artist']
-                if primary_artist.get('name') and primary_artist.get('id'):
-                    if primary_artist['name'].lower() == artist.lower():
-                        return primary_artist['id']
+
+    hits = get_nested_key(response, ['response', 'hits'])
+    if type(hits) is list:
+        for hit in hits:
+            primary_artist = get_nested_key(hit, ['result','primary_artist'])
+            if primary_artist and primary_artist.get('name') and primary_artist.get('id'):
+                if str(primary_artist.get('name')).lower() == artist.lower():
+                    return primary_artist.get('id')
+
     return None
 
 
-def get_songs_for_id(id, page_limit=100):
+def get_songs_for_id(id, page_limit=100, timeout=5):
     with requests.Session() as s:
         s.headers.update({'Authorization': "Bearer %s" % get_token()})
         url_base = "https://api.genius.com/artists/%s/songs" % id
@@ -40,16 +50,14 @@ def get_songs_for_id(id, page_limit=100):
         current_page = 1
         while current_page:
             try:
-                response = s.get(url_base, params={'page': str(current_page)}, timeout=2)
+                response = s.get(url_base, params={'page': str(current_page)}, timeout=timeout)
                 response.raise_for_status()
-
             except requests.exceptions.Timeout:
                 return (song_list, "Connection to Genius timed out")
             except requests.exceptions.ConnectionError:
                 return (song_list, "Could not connect to Genius")
             except requests.exceptions.HTTPError:
                 return (song_list, "HTTP Error %s" % response.status_code)
-
             else:
                 try:
                     songs, next_page = parse_song_response(response.text, id)
@@ -69,27 +77,25 @@ def get_songs_for_id(id, page_limit=100):
         return (song_list, None)
 
 
-# Raises: json.JSONDecodeError
+# Raises: json.decoder.JSONDecodeError
 def parse_song_response(response, id):
     response = json.loads(response)
     song_list = []
     next_page = None
 
-    if response.get('response'):
-        response = response['response']
+    songs = get_nested_key(response, ['response', 'songs'])
+    if type(songs) is list:
+        for song in songs:
+            title = song.get('title')
+            if title and get_nested_key(song, ['primary_artist', 'id']) == id:
+                song_list.append(title)
 
-        if response.get('songs'):
-            songs = response['songs']
-            for song in songs:
-                if song.get('primary_artist').get('id') == id:
-                    if song.get('title'):
-                        song_list.append(song['title'])
-
-        if response.get('next_page'):
-            try:
-                next_page = int(response['next_page'])
-            except ValueError:
-                return (song_list, None)
+    page = get_nested_key(response, ['response', 'next_page'])
+    if page:
+        try:
+            next_page = int(page)
+        except ValueError:
+            return (song_list, None)
 
     return (song_list, next_page)
 
@@ -98,7 +104,7 @@ if __name__ == "__main__":
     try:
         artist = input("Enter artist's name: ")
         response = search(artist)
-        artist_id = parse_artist_id(artist, response)
+        artist_id = parse_artist_id(response, artist)
         if not artist_id:
             print("\nGenius could not find artist: %s" % artist)
         else:
@@ -126,11 +132,10 @@ if __name__ == "__main__":
         print(e)
     
     except requests.exceptions.Timeout as e:
-        print("\Error: Connection to Genius timed out")
+        print("\nError: Connection to Genius timed out")
 
-    except json.JSONDecodeError as e:
-        print("\nError: Response from Genius was not a valid JSON document \nError message:")
-        print(e)
+    except json.decoder.JSONDecodeError as e:
+        print("\nError: Response from Genius was not a valid JSON document")
     
     except Exception as e:
         print("\nAn unexpected error has occurred \nError message:")
