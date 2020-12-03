@@ -23,7 +23,7 @@ class TestGetSongs(unittest.TestCase):
         test4 = '{"response": {"hits": [{"result": {"primary_artist": {"name": "artist", "id": 10}}}]}}'
         self.assertEqual(10, get_songs.parse_artist_id(test4, 'artist'), "Case where first hit is a match")
         test5 = '{"response": {"hits": [{"test": 0},{"result": {"primary_artist": {"name": "artist", "id": 10}}}]}}'
-        self.assertEqual(10, get_songs.parse_artist_id(test4, 'artist'), "Case where second hit is a match")
+        self.assertEqual(10, get_songs.parse_artist_id(test5, 'artist'), "Case where second hit is a match")
         test6 = '{"response": {"hits": [{"test": 0},{"result": {"primary_artist": {"name": "test", "id": 10}}}]}}'
         self.assertIsNone(get_songs.parse_artist_id(test6, 'artist'), "Case where name doesn't match")
         test7 = "test"
